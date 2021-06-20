@@ -45,16 +45,17 @@ dgui.input_bindings = {
 
 dgui.display_mode = nil
 dgui.display_modes = {
-	color = { idle = vmath.vector4(), selected = vmath.vector4() }
+	color = {
+		selectable = vmath.vector4(),
+		selected = vmath.vector4(),
+		nonselectable = vmath.vector4(),
+		out_of_group = vmath.vector4()
+	}
 }
 
 ----------------------------------------------------------------------
 -- FUNCTIONS
 ----------------------------------------------------------------------
-
-local function make_transparent(color)
-	return vmath.vector4(color.x, color.y, color.z, 0)
-end
 
 local function get_node_index(group, id)
 	if dgui.groups[group] then
@@ -115,8 +116,10 @@ end
 function dgui.set_display_mode(display_mode, arguments)
 	if display_mode == dgui.display_modes.color then
 		dgui.display_mode = display_mode
-		dgui.display_modes.color.idle = arguments.idle
+		dgui.display_modes.color.selectable = arguments.selectable
 		dgui.display_modes.color.selected = arguments.selected
+		dgui.display_modes.color.nonselectable = arguments.nonselectable
+		dgui.display_modes.color.out_of_group = arguments.out_of_group
 	end
 end
 
@@ -137,15 +140,18 @@ function dgui.remove_group(group)
 	end
 end
 
-function dgui.set_group(group, reset)
+function dgui.set_group(group, reset_this, reset_that)
 	if dgui.group then
-		if reset then
+		if reset_this then
 			dgui.groups[dgui.group].index = 1
 		end
 		local volatile_nodes = {}
 		for key, value in ipairs(dgui.groups[dgui.group].nodes) do
 			if dgui.display_mode == dgui.display_modes.color then
-				gui.set_color(gui.get_node(value.id), make_transparent(dgui.display_mode.idle))
+				local success, result = pcall(gui.get_node, value.id)
+				if success then
+					gui.set_color(gui.get_node(value.id), dgui.display_mode.out_of_group)
+				end
 			end
 			if value.volatile then
 				table.insert(volatile_nodes, value.id)
@@ -156,10 +162,16 @@ function dgui.set_group(group, reset)
 		end
 	end
 	dgui.group = group
-	if dgui.group then
-		for key, value in ipairs(dgui.groups[dgui.group].nodes) do
+	if group then
+		if reset_that then
+			dgui.groups[group].index = 1
+		end
+		for key, value in ipairs(dgui.groups[group].nodes) do
 			if dgui.display_mode == dgui.display_modes.color then
-				gui.set_color(gui.get_node(value.id), key == dgui.groups[dgui.group].index and dgui.display_mode.selected or dgui.display_mode.idle)
+				local success, result = pcall(gui.get_node, value.id)
+				if success then
+					gui.set_color(gui.get_node(value.id), key == dgui.groups[group].index and dgui.display_mode.selected or (value.selectable and dgui.display_mode.selectable or dgui.display_mode.nonselectable))
+				end
 			end
 		end
 	end
@@ -174,7 +186,10 @@ function dgui.add_node(group, id, selectable, volatile)
 		table.insert(dgui.groups[group].nodes, { id = id, selectable = selectable, volatile = volatile })
 		if dgui.group == group then
 			if dgui.display_mode == dgui.display_modes.color then
-				gui.set_color(gui.get_node(id), dgui.display_mode.idle)
+				local success, result = pcall(gui.get_node, id)
+				if success then
+					gui.set_color(gui.get_node(id), selectable and dgui.display_mode.selectable or dgui.display_mode.nonselectable)
+				end
 			end
 		end
 	end
@@ -186,7 +201,10 @@ function dgui.remove_node(group, id)
 		if dgui.group == group then
 			-- todo: correct group index and currently selected node if needed
 			if dgui.display_mode == dgui.display_modes.color then
-				gui.set_color(gui.get_node(id), make_transparent(dgui.display_mode.idle))
+				local success, result = pcall(gui.get_node, id)
+				if success then
+					gui.set_color(gui.get_node(id), dgui.display_mode.out_of_group)
+				end
 			end
 		end
 		table.remove(dgui.groups[group].nodes, index)
@@ -211,13 +229,13 @@ function dgui.on_input(action, action_id)
 		if action.pressed then
 			if dgui.input_bindings.next[action_id] then
 				if dgui.display_mode == dgui.display_modes.color then
-					gui.set_color(gui.get_node(dgui.groups[dgui.group].nodes[dgui.groups[dgui.group].index].id), dgui.display_mode.idle)
+					gui.set_color(gui.get_node(dgui.groups[dgui.group].nodes[dgui.groups[dgui.group].index].id), dgui.display_mode.selectable)
 					dgui.groups[dgui.group].index = get_next_selectable_index(dgui.group)
 					gui.set_color(gui.get_node(dgui.groups[dgui.group].nodes[dgui.groups[dgui.group].index].id), dgui.display_mode.selected)
 				end
 			elseif dgui.input_bindings.previous[action_id] then
 				if dgui.display_mode == dgui.display_modes.color then
-					gui.set_color(gui.get_node(dgui.groups[dgui.group].nodes[dgui.groups[dgui.group].index].id), dgui.display_mode.idle)
+					gui.set_color(gui.get_node(dgui.groups[dgui.group].nodes[dgui.groups[dgui.group].index].id), dgui.display_mode.selectable)
 					dgui.groups[dgui.group].index = get_previous_selectable_index(dgui.group)
 					gui.set_color(gui.get_node(dgui.groups[dgui.group].nodes[dgui.groups[dgui.group].index].id), dgui.display_mode.selected)
 				end
